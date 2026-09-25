@@ -328,6 +328,7 @@ export default function AppNavbar({
   // to it whenever the mobile menu closes via keyboard (Escape) or link
   // activation, instead of being silently dropped to <body>.
   const hamburgerButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const closeMobile = useCallback((options?: { restoreFocus?: boolean }) => {
     setMobileMenuOpen(false);
@@ -335,6 +336,48 @@ export default function AppNavbar({
       hamburgerButtonRef.current?.focus();
     }
   }, []);
+
+  // Move focus into the expanded mobile menu so keyboard users are not left
+  // behind on the trigger while the menu is open.
+  useEffect(() => {
+    if (!mobileMenuOpen || isAppView) return;
+    const firstFocusable = mobileMenuRef.current?.querySelector<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    firstFocusable?.focus();
+  }, [isAppView, mobileMenuOpen]);
+
+  // Keep Tab and Shift+Tab inside the expanded mobile menu. This is a small
+  // navigation surface, so a lightweight focus trap is preferable to allowing
+  // keyboard focus to escape behind the dropdown while it is open.
+  const handleMobileMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !mobileMenuRef.current) return;
+
+    const focusableElements = Array.from(
+      mobileMenuRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement as HTMLElement | null;
+
+    if (!activeElement || !mobileMenuRef.current.contains(activeElement)) {
+      e.preventDefault();
+      (e.shiftKey ? lastElement : firstElement).focus();
+      return;
+    }
+
+    if (e.shiftKey && activeElement === firstElement) {
+      e.preventDefault();
+      lastElement.focus();
+    } else if (!e.shiftKey && activeElement === lastElement) {
+      e.preventDefault();
+      firstElement.focus();
+    }
+  };
 
   // Safety net: any route change closes the mobile menu, regardless of
   // whether it was triggered by clicking a link inside it (browser
@@ -534,9 +577,11 @@ export default function AppNavbar({
       {/* Mobile menu (Dropdown for marketing site) */}
       {mobileMenuOpen && !isAppView && (
         <div
+          ref={mobileMenuRef}
           id="mobile-nav"
           role="navigation"
           aria-label="Marketing navigation"
+          onKeyDown={handleMobileMenuKeyDown}
           className="md:hidden border-t border-[var(--navbar-border)] bg-[var(--navbar-bg)] px-4 pb-4 pt-2 flex flex-col gap-1"
         >
           {links.map((link) => (
